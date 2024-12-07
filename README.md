@@ -1,3 +1,3 @@
-# micrograd
+# dl
 
-based on karpathy's tutorial. test
+deep learning
