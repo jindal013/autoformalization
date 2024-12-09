@@ -34,7 +34,7 @@ class Layer(Module):
         self.neurons = [Neuron(nin, **kwargs) for _ in range(nout)]
     
     def __call__(self, x):
-        outs = (n(x) for n in self.neurons)
+        outs = [n(x) for n in self.neurons]
         return outs[0] if len(outs) == 1 else outs # assumes no hidden layer is 1 neuron long
     
     def parameters(self):

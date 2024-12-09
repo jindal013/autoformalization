@@ -2,6 +2,7 @@ class Value:
     """ stores a single scalar value and its gradient """
 
     def __init__(self, data, _children=(), _op=''):
+        assert isinstance(data, (int, float)), "data can only be int/float"
         self.data = data
         self.grad = 0.0
         self._prev = set(_children) # used for backprop
