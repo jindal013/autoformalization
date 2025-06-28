@@ -88,9 +88,12 @@ class MultiHeadAttention(nn.Module):
   def __init__(self, num_heads, head_size):
     super().__init__()
     self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+    self.proj = nn.Linear(n_embd, n_embd)
 
   def forward(self, x):
-    return torch.cat([h(x) for h in self.heads], dim=-1)
+    out = torch.cat([h(x) for h in self.heads], dim=-1)
+    out = self.proj(out)
+    return out
   
 class FeedForward(nn.Module):
   """ a simple linear layer followed by a non-linearity"""
@@ -98,8 +101,9 @@ class FeedForward(nn.Module):
   def __init__(self, n_embd):
     super().__init__()
     self.net = nn.Sequential(
-      nn.Linear(n_embd, n_embd), 
+      nn.Linear(n_embd, 4*n_embd), # multiply by 4 as per transformer paper
       nn.ReLU(),
+      nn.Linear(4*n_embd, n_embd), # project layer for residual pathway
     )
   
   def forward(self, x):
@@ -114,10 +118,12 @@ class Block(nn.Module):
     head_size = n_embd // n_head
     self.sa = MultiHeadAttention(n_head, head_size)
     self.ffwd = FeedForward(n_embd)
+    self.ln1 = nn.LayerNorm(n_embd)
+    self.ln2 = nn.LayerNorm(n_embd)
   
   def forward(self, x):
-    x = self.sa(x) # (B, T, C)
-    x = self.ffwd(x) # (B, T, C)
+    x = x + self.sa(self.ln1(x)) # (B, T, C)
+    x = x + self.ffwd(self.ln2(x)) # (B, T, C)
     return x
 
 # super simple bigram model
@@ -132,6 +138,7 @@ class BigramLanguageModel(nn.Module):
       Block(n_embd, n_head=4), # 32 / 4 = 8 head_size for each attention
       Block(n_embd, n_head=4),
       Block(n_embd, n_head=4),
+      nn.LayerNorm(n_embd),
     )
     self.lm_head = nn.Linear(n_embd, vocab_size)
   
@@ -183,7 +190,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 for iter in range(max_iters):
 
   # every once in a while, evaluate the loss on train and val sets
-  if iter % eval_interval == 0:
+  if iter % eval_interval == 0 or iter == max_iters - 1:
     losses = estimate_loss()
     print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
 
