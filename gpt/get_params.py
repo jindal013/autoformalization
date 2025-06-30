@@ -1,17 +1,21 @@
+# generate from the model
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 # hyperparameters
-batch_size = 32 # how many independent sequences will we process in parallel?
-block_size = 8 # what is the maximum context length for predictions?
+batch_size = 64 # how many independent sequences will we process in parallel?
+block_size = 256 # what is the maximum context length for predictions?
 max_iters = 5000
 eval_interval = 500
 learning_rate = 1e-3
 device = 'mps' if torch.backends.mps.is_available() else 'cpu'
 print('device:', device)
 eval_iters = 200
-n_embd = 32
+n_embd = 384
+n_head = 6
+n_layer = 6
+dropout = 0.2
 # ------------
 
 torch.manual_seed(1337)
@@ -69,6 +73,8 @@ class Head(nn.Module):
     self.value = nn.Linear(n_embd, head_size, bias=False)
     self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
 
+    self.dropout = nn.Dropout(dropout)
+
   def forward(self, x):
     B, T, C = x.shape
     k = self.key(x)
@@ -77,6 +83,7 @@ class Head(nn.Module):
     wei = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5 # (B, T, C) @ (B, C, T) -> (B, T, T)
     wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, T, T)
     wei = F.softmax(wei, dim=-1) # (B, T, T)
+    wei = self.dropout(wei)
     # perform the weighted aggregation of the values
     v = self.value(x) # (B, T, head_size)
     out = wei @ v # (B, T, T) @ (B, T, C) -> (B, T, head_size)
@@ -89,10 +96,11 @@ class MultiHeadAttention(nn.Module):
     super().__init__()
     self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
     self.proj = nn.Linear(n_embd, n_embd)
+    self.dropout = nn.Dropout(dropout)
 
   def forward(self, x):
     out = torch.cat([h(x) for h in self.heads], dim=-1)
-    out = self.proj(out)
+    out = self.dropout(self.proj(out))
     return out
   
 class FeedForward(nn.Module):
@@ -104,6 +112,7 @@ class FeedForward(nn.Module):
       nn.Linear(n_embd, 4*n_embd), # multiply by 4 as per transformer paper
       nn.ReLU(),
       nn.Linear(4*n_embd, n_embd), # project layer for residual pathway
+      nn.Dropout(dropout)
     )
   
   def forward(self, x):
@@ -134,12 +143,8 @@ class BigramLanguageModel(nn.Module):
     # each token directly reads off the logits for the next token from a lookup table
     self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
     self.position_embedding_table = nn.Embedding(block_size, n_embd)
-    self.blocks = nn.Sequential(
-      Block(n_embd, n_head=4), # 32 / 4 = 8 head_size for each attention
-      Block(n_embd, n_head=4),
-      Block(n_embd, n_head=4),
-      nn.LayerNorm(n_embd),
-    )
+    self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)])
+    self.ln_f = nn.LayerNorm(n_embd)
     self.lm_head = nn.Linear(n_embd, vocab_size)
   
   def forward(self, idx, targets=None):
@@ -150,8 +155,7 @@ class BigramLanguageModel(nn.Module):
     pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T, C)
     x  = tok_emb + pos_emb # (B, T, C)
     x = self.blocks(x)
-    # x = self.sa_heads(x) # apply one head of self-attnetion. (B, T, C)
-    # x = self.ffwd(x) # (B, T, C)
+    x = self.ln_f(x)
     logits = self.lm_head(x) # (B, T, vocab_size)
 
     if targets is None:
@@ -184,25 +188,5 @@ class BigramLanguageModel(nn.Module):
 model = BigramLanguageModel()
 m = model.to(device)
 
-# create a PyTorch optimizer 
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-
-for iter in range(max_iters):
-
-  # every once in a while, evaluate the loss on train and val sets
-  if iter % eval_interval == 0 or iter == max_iters - 1:
-    losses = estimate_loss()
-    print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-
-  # sample a batch of data
-  xb, yb = get_batch('train')
-
-  # evaluate the loss
-  logits, loss = model(xb, yb)
-  optimizer.zero_grad(set_to_none=True)
-  loss.backward()
-  optimizer.step()
-
 # generate from the model
-context = torch.zeros((1, 1), dtype=torch.long, device=device)
-print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
+print(sum(p.numel() for p in model.parameters())/1e6, 'M parameters')
