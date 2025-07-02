@@ -190,6 +190,8 @@ m = model.to(device)
 # create a PyTorch optimizer 
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
+print(str(sum(i.numel() for i in model.parameters()) / 1e3) + 'K parameters')
+
 for iter in range(max_iters):
   
   if iter % 10 == 0:
@@ -214,4 +216,6 @@ context = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(decode(m.generate(context, max_new_tokens=500)[0].tolist()))
 
 more = decode(m.generate(context, max_new_tokens=10000)[0].tolist())
-open('more.txt', 'w').write(more)
+open('more_bigger_text.txt', 'w').write(more)
+
+torch.save(model.state_dict(), "gpt_lang_model.pt")
