@@ -1,5 +1,6 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
+
 torch.manual_seed(30)
 
 model_id = "deepseek-ai/DeepSeek-Prover-V2-7B"  # or DeepSeek-Prover-V2-671B
@@ -30,13 +31,18 @@ The plan should highlight key ideas, intermediate lemmas, and proof structures t
 """.strip()
 
 chat = [
-  {"role": "user", "content": prompt.format(formal_statement)},
+    {"role": "user", "content": prompt.format(formal_statement)},
 ]
 
-model = AutoModelForCausalLM.from_pretrained(model_id, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True)
-inputs = tokenizer.apply_chat_template(chat, tokenize=True, add_generation_prompt=True, return_tensors="pt").to(model.device)
+model = AutoModelForCausalLM.from_pretrained(
+    model_id, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True
+)
+inputs = tokenizer.apply_chat_template(
+    chat, tokenize=True, add_generation_prompt=True, return_tensors="pt"
+).to(model.device)
 
 import time
+
 start = time.time()
 outputs = model.generate(inputs, max_new_tokens=8192)
 print(tokenizer.batch_decode(outputs))

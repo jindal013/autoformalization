@@ -1,0 +1,4 @@
+{
+  "query": "The fundamental group of the circle is isomorphic to the integers",
+  "lean_code": "<\uff5cbegin\u2581of\u2581sentence\uff5c><\uff5cUser\uff5c>Please formalize the following mathematical statement in Lean 4: The fundamental group of the circle is isomorphic to the integers. Provide only the Lean 4 code without any explanations:<\uff5cAssistant\uff5c>### Lean 4 Formalization\n\n```lean4\nimport topology.fundamental_group.basic\nimport topology.instances.real\n\nopen Topology\n\ntheorem fundamental_group_circle_is_integers :\n  FundamentalGroup (TopologicalSpace.\u751f\u6210\u7684 (Set.univ : Set (\u211d \u00d7 \u211d))) (0, 0) \u2243*  Multiplicative \u2124 := by\n  apply?\n  <;> simp_all [TopologicalSpace.\u751f\u6210\u7684]\n "
+}

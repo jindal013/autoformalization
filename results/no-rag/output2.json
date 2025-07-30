@@ -1,0 +1,4 @@
+{
+  "query": "The fundamental group of the circle is isomorphic to the integers",
+  "lean_code": "lean4\nimport topology.fundamental_groupoid.basic\nimport topology.homotopy.basic\n\nopen TopologicalSpace\n\nvariable {X Y : Type*} [TopologicalSpace X] [TopologicalSpace Y]\n\ntheorem fundamental_group_map_induced_by_continuous_map\n    (f : C(X, Y)) :\n    \u03c0\u2081.map f.continuous = \u03c0\u2081.map f.continuous := by\n  rfl\n```<\uff5cend\u2581of\u2581sentence\uff5c>"
+}

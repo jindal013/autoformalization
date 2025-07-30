@@ -132,7 +132,7 @@ class MathematicalRAGPipeline:
         return combined[:top_k]
 
     def generate_lean_code(
-        self, query: str, context: Optional[List[str]] = None, max_length: int = 512
+        self, query: str, context: Optional[List[str]] = None, max_new_tokens: int = 2048
     ) -> str:
         if context:
             context_text = "\n\n".join(context)
@@ -162,10 +162,11 @@ Provide only the Lean 4 code without any explanations:"""
         with torch.no_grad():
             outputs = self.model.generate(
                 inputs["input_ids"],
-                max_length=max_length,
+                max_new_tokens=max_new_tokens,  # Generate at most 2048 new tokens
                 temperature=0.1,
                 do_sample=True,
                 pad_token_id=self.tokenizer.eos_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,  # Stop at EOS token
             )
 
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)

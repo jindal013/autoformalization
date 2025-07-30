@@ -1,0 +1,8 @@
+python formalize.py --query "The fundamental group of the circle is isomorphic to the integers" --method hybrid
+python test_dspv-7b.py --query "The fundamental group of the circle is isomorphic to the integers"
+
+python formalize.py --query "A continuous map between topological spaces induces a homomorphism between their fundamental groups" --method hybrid
+python test_dspv-7b.py --query "A continuous map between topological spaces induces a homomorphism between their fundamental groups"
+
+python formalize.py --query "The torus is a topological space whose fundamental group is isomorphic to the product of two copies of the integers" --method hybrid
+python test_dspv-7b.py --query "The torus is a topological space whose fundamental group is isomorphic to the product of two copies of the integers"
