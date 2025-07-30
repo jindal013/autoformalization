@@ -1,4 +1,4 @@
-# autoformalization
+# repl
 
 ## GitHub configuration
 
