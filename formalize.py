@@ -37,13 +37,13 @@ def main():
     parser.add_argument(
         "--textbook",
         type=str,
-        default="dataset/converted.md",
-        help="Path to textbook markdown file (default: dataset/converted.md)",
+        default="dataset/converted.txt",
+        help="Path to textbook markdown file (default: dataset/converted.txt)",
     )
     parser.add_argument(
         "--model",
         type=str,
-        default="DeepSeek-Prover-V2-7B",
+        default="deepseek-ai/DeepSeek-Prover-V2-7B",
         help="HuggingFace model name",
     )
 
@@ -79,7 +79,7 @@ def main():
                 "method": args.method,
                 "lean_code": lean_code,
                 "context_used": metrics.retrieved_contexts,
-                "metrics": {"mrr": metrics.mrr, "top_k_recall": metrics.top_k_recall},
+                "metrics": None,
             }
 
         with open(args.output, "w") as f:
@@ -96,12 +96,6 @@ def main():
             print(f"\nRetrieved Context ({len(result['context_used'])} chunks):")
             for i, context in enumerate(result["context_used"], 1):
                 print(f"{i}. {context[:200]}...")
-
-        if result["metrics"]:
-            print(f"\nMetrics:")
-            print(f"  MRR: {result['metrics']['mrr']:.4f}")
-            for k, recall in result["metrics"]["top_k_recall"].items():
-                print(f"  Top-{k} Recall: {recall:.4f}")
 
         print(f"\nResults saved to: {args.output}")
 

@@ -1,0 +1,22 @@
+================================================================================
+LEAN CODE COMPARISON
+================================================================================
+Query: The sum of two real numbers is commutative
+Timestamp: 20250730_151614
+================================================================================
+
+METHOD: NO_RAG
+----------------------------------------
+```lean4
+theorem sum_comm : ∀ (a b : ℝ), a + b = b + a := by
+  sorry
+```
+
+================================================================================
+
+METHOD: HYBRID
+----------------------------------------
+ERROR: Input length of input_ids is 1795, but `max_length` is set to 512. This can lead to unexpected behavior. You should consider increasing `max_length` or, better yet, setting `max_new_tokens`.
+
+================================================================================
+

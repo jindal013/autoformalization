@@ -9,7 +9,6 @@ import re
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
-import logging
 
 try:
     from rank_bm25 import BM25Okapi
@@ -28,9 +27,6 @@ except ImportError:
     print("Warning: scikit-learn not available. Some metrics may not work.")
     SKLEARN_AVAILABLE = False
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class RAGMetrics:
@@ -44,9 +40,9 @@ class RAGMetrics:
 class MathematicalRAGPipeline:
     def __init__(
         self,
-        model_name: str = "DeepSeek-Prover-V2-7B",
+        model_name: str = "deepseek-ai/DeepSeek-Prover-V2-7B",
         embedding_model: str = "math-similarity/Bert-MLM_arXiv-MP-class_zbMath",
-        textbook_path: str = "dataset/converted.md",
+        textbook_path: str = "dataset/converted.txt",
     ):
         self.model_name = model_name
         self.embedding_model = embedding_model
@@ -57,23 +53,36 @@ class MathematicalRAGPipeline:
         self._initialize_retrieval_methods()
 
     def _load_models(self):
-        logger.info(f"Loading model: {self.model_name}")
+        print(f"Loading model: {self.model_name}")
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
+
+        print(f"Using device: {device}")
+
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             torch_dtype=torch.float16,
-            device_map="auto",
+            device_map="auto" if device == "cuda" else None,
             trust_remote_code=True,
         )
 
-        logger.info(f"Loading embedding model: {self.embedding_model}")
+        if device != "cuda":
+            self.model = self.model.to(device)
+
+        print(f"Loading embedding model: {self.embedding_model}")
         self.embeddings = HuggingFaceEmbeddings(
             model_name=self.embedding_model,
-            model_kwargs={"device": "cuda" if torch.cuda.is_available() else "cpu"},
+            model_kwargs={"device": device},
         )
 
-        logger.info("Models loaded successfully")
+        print("Models loaded successfully")
 
     def _load_textbook(self):
         if not os.path.exists(self.textbook_path):
@@ -89,21 +98,21 @@ class MathematicalRAGPipeline:
         )
 
         self.text_chunks = text_splitter.split_text(self.textbook_content)
-        logger.info(f"Loaded textbook with {len(self.text_chunks)} chunks")
+        print(f"Loaded textbook with {len(self.text_chunks)} chunks")
 
     def _initialize_retrieval_methods(self):
         if BM25_AVAILABLE:
             tokenized_chunks = [chunk.lower().split() for chunk in self.text_chunks]
             self.bm25 = BM25Okapi(tokenized_chunks)
-            logger.info("BM25 retrieval initialized")
+            print("BM25 retrieval initialized")
         else:
             self.bm25 = None
-            logger.warning("BM25 not available - sparse retrieval disabled")
+            print("BM25 not available - sparse retrieval disabled")
 
         self.vectorstore = FAISS.from_texts(self.text_chunks, self.embeddings)
-        logger.info("FAISS dense retrieval initialized")
+        print("FAISS dense retrieval initialized")
 
-        logger.info("Retrieval methods initialized")
+        print("Retrieval methods initialized")
 
     def retrieve_context(
         self, query: str, method: str = "hybrid", top_k: int = 5
@@ -119,7 +128,7 @@ class MathematicalRAGPipeline:
 
     def _bm25_retrieve(self, query: str, top_k: int) -> List[str]:
         if not BM25_AVAILABLE or self.bm25 is None:
-            logger.warning("BM25 not available, falling back to dense retrieval")
+            print("BM25 not available, falling back to dense retrieval")
             return self._dense_retrieve(query, top_k)
 
         tokenized_query = query.lower().split()
@@ -133,7 +142,7 @@ class MathematicalRAGPipeline:
 
     def _hybrid_retrieve(self, query: str, top_k: int) -> List[str]:
         if not BM25_AVAILABLE or self.bm25 is None:
-            logger.warning("BM25 not available for hybrid retrieval, using dense only")
+            print("BM25 not available for hybrid retrieval, using dense only")
             return self._dense_retrieve(query, top_k)
 
         bm25_results = self._bm25_retrieve(query, top_k)
@@ -177,8 +186,10 @@ class MathematicalRAGPipeline:
         return recall_scores
 
     def generate_lean_code(
-        self, query: str, context: Optional[List[str]] = None, max_length: int = 512
+        self, query: str, context: Optional[List[str]] = None, max_length: int = 8192
     ) -> str:
+        print(f"Generating Lean code for query: {query[:100]}...")
+
         if context:
             context_text = "\n\n".join(context)
             prompt = f"""Given the following mathematical context:
@@ -197,21 +208,49 @@ Provide only the Lean 4 code without any explanations:"""
 
 Provide only the Lean 4 code without any explanations:"""
 
+        print("Tokenizing input...")
         inputs = self.tokenizer(
             prompt, return_tensors="pt", truncation=True, max_length=2048
         )
 
-        with torch.no_grad():
-            outputs = self.model.generate(
-                inputs.input_ids,
-                max_length=max_length,
-                temperature=0.1,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id,
-            )
+        device = next(self.model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        print(f"Generating on device: {device}")
 
+        try:
+            with torch.no_grad():
+                print("Starting generation...")
+                outputs = self.model.generate(
+                    inputs["input_ids"],
+                    max_length=max_length,
+                    temperature=0.1,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                )
+                print("Generation completed!")
+        except RuntimeError as e:
+            if "MPS" in str(e) or "device" in str(e).lower():
+                print(f"MPS device error, falling back to CPU: {e}")
+                self.model = self.model.to("cpu")
+                inputs = {k: v.to("cpu") for k, v in inputs.items()}
+
+                with torch.no_grad():
+                    print("Starting generation on CPU...")
+                    outputs = self.model.generate(
+                        inputs["input_ids"],
+                        max_length=max_length,
+                        temperature=0.1,
+                        do_sample=True,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                    )
+                    print("Generation completed on CPU!")
+            else:
+                raise e
+
+        print("Decoding output...")
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         lean_code = generated_text[len(prompt) :].strip()
+        print(f"Generated {len(lean_code)} characters")
 
         return lean_code
 

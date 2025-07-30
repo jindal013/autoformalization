@@ -1,0 +1,35 @@
+{
+  "query": "The sum of two real numbers is commutative",
+  "timestamp": "20250730_151614",
+  "results": {
+    "no_rag": {
+      "query": "The sum of two real numbers is commutative",
+      "method": "no_rag",
+      "lean_code": "```lean4\ntheorem sum_comm : \u2200 (a b : \u211d), a + b = b + a := by\n  sorry\n```",
+      "timestamp": "20250730_151614"
+    },
+    "hybrid": {
+      "query": "The sum of two real numbers is commutative",
+      "method": "hybrid",
+      "lean_code": "ERROR: Input length of input_ids is 1795, but `max_length` is set to 512. This can lead to unexpected behavior. You should consider increasing `max_length` or, better yet, setting `max_new_tokens`.",
+      "timestamp": "20250730_151614"
+    }
+  },
+  "context_details": {
+    "no_rag": {
+      "query": "The sum of two real numbers is commutative",
+      "method": "no_rag",
+      "context_used": null,
+      "context_count": 0,
+      "timestamp": "20250730_151614"
+    },
+    "hybrid": {
+      "query": "The sum of two real numbers is commutative",
+      "method": "hybrid",
+      "context_used": null,
+      "context_count": 0,
+      "error": "Input length of input_ids is 1795, but `max_length` is set to 512. This can lead to unexpected behavior. You should consider increasing `max_length` or, better yet, setting `max_new_tokens`.",
+      "timestamp": "20250730_151614"
+    }
+  }
+}
