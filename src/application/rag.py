@@ -1,12 +1,10 @@
 import os
 import json
 import numpy as np
-import signal
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
-import re
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -17,24 +15,7 @@ try:
     BM25_AVAILABLE = True
 except ImportError:
     print("Warning: rank-bm25 not available. BM25 retrieval will be disabled.")
-    print("Install with: pip install rank-bm25")
     BM25_AVAILABLE = False
-
-try:
-    from sklearn.metrics.pairwise import cosine_similarity
-
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    print("Warning: scikit-learn not available. Some metrics may not work.")
-    SKLEARN_AVAILABLE = False
-
-
-class TimeoutError(Exception):
-    pass
-
-
-def timeout_handler(signum, frame):
-    raise TimeoutError("Operation timed out")
 
 
 @dataclass
@@ -50,7 +31,7 @@ class MathematicalRAGPipeline:
     def __init__(
         self,
         model_name: str = "deepseek-ai/DeepSeek-Prover-V2-7B",
-        embedding_model: str = "math-similarity/Bert-MLM_arXiv-MP-class_zbMath",
+        embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
         textbook_path: str = "dataset/converted.txt",
     ):
         self.model_name = model_name
@@ -65,31 +46,25 @@ class MathematicalRAGPipeline:
         print(f"Loading model: {self.model_name}")
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-
-        # Fix tokenizer padding
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # Force CPU for stability
-        device = "cpu"
-        print(f"Using device: {device} (forced for stability)")
+        # Use GPU if available
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Using device: {device}")
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             torch_dtype=torch.float16,
-            device_map=None,  # Don't use auto device mapping
+            device_map="auto" if device == "cuda" else None,
             trust_remote_code=True,
         )
 
-        # Move to CPU explicitly
-        self.model = self.model.to(device)
+        if device != "cuda":
+            self.model = self.model.to(device)
 
         print(f"Loading embedding model: {self.embedding_model}")
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=self.embedding_model,
-            model_kwargs={"device": device},
-        )
-
+        self.embeddings = HuggingFaceEmbeddings(model_name=self.embedding_model)
         print("Models loaded successfully")
 
     def _load_textbook(self):
@@ -102,7 +77,6 @@ class MathematicalRAGPipeline:
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
-            separators=["\n\n", "\n", ".", "!", "?", ";", ":", " "],
         )
 
         self.text_chunks = text_splitter.split_text(self.textbook_content)
@@ -117,21 +91,12 @@ class MathematicalRAGPipeline:
             self.bm25 = None
             print("BM25 not available - sparse retrieval disabled")
 
-        # Pre-compute embeddings for all chunks
-        print("Pre-computing embeddings for dense retrieval...")
-        self.chunk_embeddings = self.embeddings.embed_documents(self.text_chunks)
-        print(f"Pre-computed embeddings for {len(self.chunk_embeddings)} chunks")
-
         self.vectorstore = FAISS.from_texts(self.text_chunks, self.embeddings)
         print("FAISS dense retrieval initialized")
-
-        print("Retrieval methods initialized")
 
     def retrieve_context(
         self, query: str, method: str = "hybrid", top_k: int = 5
     ) -> List[str]:
-        print(f"Retrieving context using method: {method}")
-
         if method == "no_rag":
             return []
         elif method == "bm25":
@@ -144,108 +109,31 @@ class MathematicalRAGPipeline:
             raise ValueError(f"Unknown retrieval method: {method}")
 
     def _bm25_retrieve(self, query: str, top_k: int) -> List[str]:
-        print("Starting BM25 retrieval...")
         if not BM25_AVAILABLE or self.bm25 is None:
-            print("BM25 not available, falling back to dense retrieval")
             return self._dense_retrieve(query, top_k)
 
-        try:
-            tokenized_query = query.lower().split()
-            scores = self.bm25.get_scores(tokenized_query)
-            top_indices = np.argsort(scores)[::-1][:top_k]
-            results = [self.text_chunks[i] for i in top_indices]
-            print(f"BM25 retrieval completed, found {len(results)} results")
-            return results
-        except Exception as e:
-            print(f"BM25 retrieval failed: {e}, falling back to dense retrieval")
-            return self._dense_retrieve(query, top_k)
+        tokenized_query = query.lower().split()
+        scores = self.bm25.get_scores(tokenized_query)
+        top_indices = np.argsort(scores)[::-1][:top_k]
+        return [self.text_chunks[i] for i in top_indices]
 
     def _dense_retrieve(self, query: str, top_k: int) -> List[str]:
-        print("Starting dense retrieval...")
-        try:
-            # Set timeout for dense retrieval (2 minutes)
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(120)
-
-            # Use FAISS vectorstore for efficient similarity search
-            docs = self.vectorstore.similarity_search(query, k=top_k)
-            results = [doc.page_content for doc in docs]
-
-            # Cancel timeout
-            signal.alarm(0)
-
-            print(f"Dense retrieval completed, found {len(results)} results")
-            return results
-        except TimeoutError:
-            print("Dense retrieval timed out (2 minutes)")
-            signal.alarm(0)
-            return []
-        except Exception as e:
-            print(f"Dense retrieval failed: {e}")
-            signal.alarm(0)
-            return []
+        docs = self.vectorstore.similarity_search(query, k=top_k)
+        return [doc.page_content for doc in docs]
 
     def _hybrid_retrieve(self, query: str, top_k: int) -> List[str]:
-        print("Starting hybrid retrieval...")
-
         if not BM25_AVAILABLE or self.bm25 is None:
-            print("BM25 not available for hybrid retrieval, using dense only")
             return self._dense_retrieve(query, top_k)
 
-        print("Getting BM25 results...")
         bm25_results = self._bm25_retrieve(query, top_k)
-        print(f"BM25 returned {len(bm25_results)} results")
-
-        print("Getting dense results...")
         dense_results = self._dense_retrieve(query, top_k)
-        print(f"Dense returned {len(dense_results)} results")
 
         combined = list(dict.fromkeys(bm25_results + dense_results))
-        final_results = combined[:top_k]
-        print(
-            f"Hybrid retrieval completed, returning {len(final_results)} unique results"
-        )
-        return final_results
-
-    def calculate_mrr(
-        self, query: str, relevant_chunks: List[str], method: str = "hybrid"
-    ) -> float:
-        retrieved_chunks = self.retrieve_context(
-            query, method, top_k=len(self.text_chunks)
-        )
-
-        for i, chunk in enumerate(retrieved_chunks):
-            if chunk in relevant_chunks:
-                return 1.0 / (i + 1)
-
-        return 0.0
-
-    def calculate_top_k_recall(
-        self,
-        query: str,
-        relevant_chunks: List[str],
-        method: str = "hybrid",
-        k_values: List[int] = [1, 3, 5],
-    ) -> Dict[int, float]:
-        retrieved_chunks = self.retrieve_context(query, method, top_k=max(k_values))
-
-        recall_scores = {}
-        for k in k_values:
-            top_k_chunks = retrieved_chunks[:k]
-            relevant_found = sum(
-                1 for chunk in top_k_chunks if chunk in relevant_chunks
-            )
-            recall_scores[k] = (
-                relevant_found / len(relevant_chunks) if relevant_chunks else 0.0
-            )
-
-        return recall_scores
+        return combined[:top_k]
 
     def generate_lean_code(
-        self, query: str, context: Optional[List[str]] = None, max_length: int = 4000
+        self, query: str, context: Optional[List[str]] = None, max_length: int = 512
     ) -> str:
-        print(f"Generating Lean code for query: {query[:100]}...")
-
         if context:
             context_text = "\n\n".join(context)
             prompt = f"""Given the following mathematical context:
@@ -264,58 +152,25 @@ Provide only the Lean 4 code without any explanations:"""
 
 Provide only the Lean 4 code without any explanations:"""
 
-        print("Tokenizing input...")
         inputs = self.tokenizer(
-            prompt,
-            return_tensors="pt",
-            truncation=True,
-            max_length=2048,
-            padding=True,
-            return_attention_mask=True,
+            prompt, return_tensors="pt", truncation=True, max_length=2048
         )
 
         device = next(self.model.parameters()).device
         inputs = {k: v.to(device) for k, v in inputs.items()}
-        print(f"Generating on device: {device}")
 
-        try:
-            with torch.no_grad():
-                print("Starting generation...")
-                outputs = self.model.generate(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],
-                    max_length=max_length,
-                    temperature=0.1,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                )
-                print("Generation completed!")
-        except Exception as e:
-            print(f"Generation failed: {e}")
-            return f"ERROR: Generation failed - {e}"
+        with torch.no_grad():
+            outputs = self.model.generate(
+                inputs["input_ids"],
+                max_length=max_length,
+                temperature=0.1,
+                do_sample=True,
+                pad_token_id=self.tokenizer.eos_token_id,
+            )
 
-        print("Decoding output...")
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         lean_code = generated_text[len(prompt) :].strip()
-        print(f"Generated {len(lean_code)} characters")
-
         return lean_code
-
-    def evaluate_rag(
-        self, query: str, relevant_chunks: List[str], method: str = "hybrid"
-    ) -> RAGMetrics:
-        mrr = self.calculate_mrr(query, relevant_chunks, method)
-        top_k_recall = self.calculate_top_k_recall(query, relevant_chunks, method)
-        retrieved_contexts = self.retrieve_context(query, method, top_k=5)
-
-        return RAGMetrics(
-            mrr=mrr,
-            top_k_recall=top_k_recall,
-            retrieved_contexts=retrieved_contexts,
-            query=query,
-            ground_truth=relevant_chunks,
-        )
 
     def formalize_with_rag(
         self, query: str, method: str = "hybrid", top_k: int = 5
