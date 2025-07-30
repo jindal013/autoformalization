@@ -1,6 +1,6 @@
 # Autoformalization
 
-A tool for formalizing mathematical concepts using AI models, featuring built-in Retrieval-Augmented Generation (RAG) from textbooks and integration with Lean 4. While the original plan was to pursue post-training via Generalized Reinforcement Policy Optimization (GRPO), the development of LeanConjecturer (2025) shifted the focus toward addressing foundational challenges in mathematical formalization. In particular, context retrieval remains a pressing problem: effective formalization requires not only retrieving relevant information, but also representing and relating mathematical objects and their roles within proofs. This ongoing challenge is central to advancing automated reasoning in mathematics.
+A tool for formalizing mathematical concepts using AI models, featuring built-in Retrieval-Augmented Generation (RAG) from textbooks and integration with Lean 4. While the original plan was to pursue post-training via Group Relative Policy Optimization (GRPO), the development of LeanConjecturer (2025) shifted the focus toward addressing foundational challenges in mathematical formalization. In particular, context retrieval remains a pressing problem: effective formalization requires not only retrieving relevant information, but also representing and relating mathematical objects and their roles within proofs. This ongoing challenge is central to advancing automated reasoning in mathematics.
 
 ## Environment Setup
 
