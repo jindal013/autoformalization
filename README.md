@@ -48,19 +48,19 @@ The system includes a Lean 4 server for:
 autoformalization/
 ├── src/
 │   ├── application/
-│   │   ├── generator/     # Formalization generation logic
-│   │   ├── evaluator/     # Formalization evaluation logic
-│   │   ├── rag/          # RAG implementation with LangChain
-│   │   └── pipeline.py    # Main execution pipeline
-│   ├── entity/           # Data models
-│   └── constant.py       # Configuration constants
-├── repl/                 # Lean 4 REPL implementation
-├── textbooks/           # Textbook PDFs for RAG
-├── generation.py         # Multi-file generation script
-├── problem_prepare.py    # Single-file generation script
+│   │   ├── generator/       # Formalization generation logic
+│   │   ├── evaluator/       # Formalization evaluation logic
+│   │   ├── rag/             # RAG implementation with LangChain
+│   │   └── pipeline.py      # Main execution pipeline
+│   ├── entity/              # Data models
+│   └── constant.py          # Configuration constants
+├── repl/                    # Lean 4 REPL implementation
+├── textbooks/               # Textbook PDFs for RAG
+├── generation.py            # Multi-file generation script
+├── problem_prepare.ipynb    # Single-file generation script
 └── README.md
 ```
 
 ## Credits
 
-This project is inspired by and builds upon the excellent work of the [LeanConjecturer](https://github.com/auto-res/LeanConjecturer) project by the auto-res team.
+This project is inspired by and builds upon the work of the [LeanConjecturer](https://github.com/auto-res/LeanConjecturer).
